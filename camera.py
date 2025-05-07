@@ -10,10 +10,12 @@ def get_livestream(camera):
     # makes the camera able to be used by OpenCV
     source = cv2.VideoCapture(camera = 0) 
 
+    """
     y_start = 100
     y_end = 300
     x_start = 50
     x_end = 250
+    """
 
     # makes a window to display the source feed
     win_name = 'Camera Preview'
@@ -24,7 +26,7 @@ def get_livestream(camera):
         if not has_frame:
             break
 
-        cropped_stream = frame[y_start:y_end, x_start:x_end]
+        # cropped_stream = frame[y_start:y_end, x_start:x_end]
         cv2.imshow(win_name, frame)
 
     source.release()

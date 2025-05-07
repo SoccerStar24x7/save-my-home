@@ -23,12 +23,29 @@ import random
 import warnings
 import os
 from tqdm import tqdm
-
 import pandas as pd
+
+from get_mean_and_std import get_mean_stds
+
+
+# ---------------- Configurating variables and assigning values ----------------------
+
+# assigning the outputs to their respective results
+class_mapping = {
+
+    0: "on",
+    1: "off",
+
+}
+
+img_size = (224,224) # sets the config for every image
+
+
+
+# ---------------------- Defining useful functions and classes ---------------------------
 
 
 #Set seed for reproducibilty
-
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -39,39 +56,9 @@ def set_seed(seed):
        torch.cuda.manual_seed_all(seed)
        torch.backends.cudnn.deterministic = True
        torch.backends.cudnn.benchmark = True
-
 set_seed(42)
 
 
-@dataclass(frozen=True)
-class TrainingConfig:
-      # Configuration for Training
-      batch_size: int = 32
-      num_epochs: int = 100
-      learning_rate: float = 1e-4
-
-      log_interval: int = 1
-      test_interval: int = 1
-      data_root: int = "./"
-      num_workers: int = 5
-      device: str = "cuda"
-
-train_config = TrainingConfig()
-DEVICE = torch.device("cuda") if torch.cuda.is_available() else "cpu"
-print("Available Device: ", DEVICE)
-
-
-train_root = os.path.join("testing_data", "training")
-val_root = os.path.join(train_config.data_root, "testing_data", "validation")
-
-img_size = (224,224)
-
-preprocess = transforms.Compose(
-    [
-        transforms.Resize(img_size, antialias=True),
-        transforms.ToTensor()
-    ]
-)
 
 # determines the mean based on the given dataset, which in our case are the photos of the stove
 def get_mean_std(train_loader, img_size=(224, 224), num_workers=2):
@@ -91,6 +78,36 @@ def get_mean_std(train_loader, img_size=(224, 224), num_workers=2):
 
     return mean, std # returns the mean and the std of the given dataset
 
+
+@dataclass(frozen=True)
+class TrainingConfig:
+      # Configuration for Training
+      batch_size: int = 32
+      num_epochs: int = 100
+      learning_rate: float = 1e-4
+
+      log_interval: int = 1
+      test_interval: int = 1
+      data_root: int = "./"
+      num_workers: int = 5
+      device: str = "cuda"
+
+# determines the component that will be used to process the CNN
+train_config = TrainingConfig()
+DEVICE = torch.device("cuda") if torch.cuda.is_available() else "cpu"
+print("Available Device: ", DEVICE)
+
+
+# obtains the directory of the training data and validation data
+train_root = os.path.join("testing_data", "training")
+val_root = os.path.join(train_config.data_root, "testing_data", "validation")
+
+preprocess = transforms.Compose(
+    [
+        transforms.Resize(img_size, antialias=True),
+        transforms.ToTensor()
+    ]
+)
 
 train_data_mean_calc = datasets.ImageFolder(root=train_root, transform = preprocess) # gets the training info
 train_loader_mean_calc = DataLoader(train_data_mean_calc, shuffle = True, batch_size = train_config.batch_size, num_workers = train_config.num_workers)
@@ -125,4 +142,186 @@ train_data = datasets.ImageFolder(root = train_root, transform = train_transform
 
 # The validation dataset should have only common transforms like Resize, ToTensor and Normalize.
 val_data = datasets.ImageFolder(root=val_root, transform = common_transforms)
+
+train_loader = DataLoader(
+    train_data,
+    shuffle = True,
+    batch_size = train_config.batch_size,
+    num_workers = train_config.num_workers
+)
+val_loader = DataLoader(
+    val_data,
+    shuffle = False,
+    batch_size = train_config.batch_size,
+    num_workers = train_config.num_workers
+)
+
+# ---------------------------Creating the actual CNN--------------------------
+
+# --Making the first layer--:
+
+class MyModel(nn.Module):
+  def __init__(self):
+    super().__init__()
+
+    self._model = nn.Sequential(
+
+        #---------------------- Convolution Layers ----------------------
+
+        #-----------------------------------------------
+        # Conv2d Norm Activation Block1: 32 Filters, MaxPool.
+        #-----------------------------------------------
+        nn.Conv2d(in_channels = 3, out_channels = 32, kernel_size = 5),
+        nn.BatchNorm2d(32),
+        nn.ReLU(inplace = True),
+
+        nn.Conv2d(in_channels = 32, out_channels = 32, kernel_size = 3),
+        nn.BatchNorm2d(32),
+        nn.ReLU(inplace = True),
+        nn.MaxPool2d(kernel_size = 2),
+
+        #-------------------------------------------------------------------
+        # Conv2d Norm Activation Block 2: 64,128 Filters, MaxPool, Dropout(p=0.25)
+        #-------------------------------------------------------------------
+        nn.LazyConv2d(out_channels = 64, kernel_size = 3),
+        nn.BatchNorm2d(64),
+        nn.ReLU(inplace = True),
+
+        nn.LazyConv2d(out_channels = 128, kernel_size = 3),
+        nn.BatchNorm2d(128),
+        nn.ReLU(inplace = True),
+        nn.MaxPool2d(kernel_size = 2),
+
+        #--------------------------------------------------
+        # Conv2d Norm Activation Block 3: 128,256,512 Filters, MaxPool.
+        #--------------------------------------------------
+        Conv2dNormActivation(in_channels = 128, out_channels=256, kernel_size = 3),
+
+        Conv2dNormActivation(in_channels = 256, out_channels=256, kernel_size = 3),
+        nn.MaxPool2d(kernel_size = 2),
+
+        Conv2dNormActivation(in_channels = 256, out_channels=512, kernel_size = 3),
+        nn.MaxPool2d(kernel_size = 2),
+
+        #---------------------- Feed Forward Layers --------------------
+        nn.AdaptiveAvgPool2d(output_size=(3,3)),
+
+        #------------------------------------
+        # Flatten the convolutional features.
+        #------------------------------------
+        nn.Flatten(),
+
+        #--------------------
+        # Classification Head.
+        #--------------------
+        nn.Linear(in_features = 512*3*3, out_features = 256),
+        nn.Linear(in_features = 256, out_features = 10)
+    )
+
+  def forward(self,x):
+      return self._model(x)
+
+model = MyModel()
+
+optimizer  = Adam(model.parameters(), lr = train_config.learning_rate)
+DEVICE = torch.device("cuda") if torch.cuda.is_available() else "cpu"
+
+logdir = "runs/80epochs-3.3M_param_dropout"
+
+writer = SummaryWriter(logdir)
+
+
+# ------------------------------- Training the model -------------------------------------------------
+
+def train(model, train_loader):
+    model.train()
+    model.to(DEVICE)
+
+    running_loss = 0
+    correct_predictions = 0
+    total_train_samples = 0
+
+    for images, labels in tqdm(train_loader, desc="Training"):
+        images, labels = images.to(DEVICE), labels.to(DEVICE)
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = F.cross_entropy(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        running_loss += loss.item()
+        _, predicted = torch.max(outputs.data, dim=1)
+        total_train_samples += labels.shape[0]
+        correct_predictions += (predicted == labels).sum().item()
+
+    train_avg_loss = running_loss / len(train_loader)
+    train_accuracy = 100 * correct_predictions / total_train_samples
+    return train_avg_loss, train_accuracy
+
+
+def validation(model, val_loader):
+    model.eval()
+    model.to(DEVICE)
+
+    running_loss = 0
+    correct_predictions = 0
+    total_val_samples = 0
+
+    for images, labels in tqdm(val_loader, desc="Validation"):
+        images, labels = images.to(DEVICE), labels.to(DEVICE)
+
+        with torch.no_grad():
+             outputs = model(images)
+
+        loss = F.cross_entropy(outputs, labels)
+        running_loss += loss.item()
+        _, predicted = torch.max(outputs.data, dim=1)
+        total_val_samples += labels.shape[0]
+        correct_predictions += (predicted == labels).sum().item()
+
+    val_avg_loss = running_loss / len(val_loader)
+    val_accuracy = 100 * correct_predictions / total_val_samples
+    return val_avg_loss, val_accuracy
+
+
+def main(model, train_loader, val_loader):
+
+    train_losses, val_losses = [], []
+    train_accuracies, val_accuracies = [], []
+
+    best_val_acc = 0.0
+    best_weights = None
+
+    for epoch in range(train_config.num_epochs):
+        train_loss, train_accuracy = train(model, train_loader)
+        val_loss, val_accuracy = validation(model, val_loader)
+
+
+        train_losses.append(train_loss)
+        train_accuracies.append(train_accuracy)
+        val_losses.append(val_loss)
+        val_accuracies.append(val_accuracy)
+
+        print(f"Epoch {epoch+1:0>2}/{train_config.num_epochs} - Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}% - Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.2f}%")
+
+        # Logging metrics to tensorboard
+        writer.add_scalar('Loss/train', train_loss)
+        writer.add_scalar('Loss/val', val_loss)
+        writer.add_scalar('Accuracy/train', train_accuracy)
+        writer.add_scalar('Accuracy/val', val_accuracy)
+
+        if val_accuracy > best_val_acc:
+            best_val_acc = val_accuracy
+            best_weights =  model.state_dict()
+            print(f"Saving best model...💾")
+            torch.save(best_weights, "best.pt")
+
+    return train_losses, train_accuracies, val_losses, val_accuracies
+
+
+# ------------------------------------------- Save the best model---------------------------------
+
+# Load the best model weights
+model.load_state_dict(torch.load("best.pt"))
+model.eval()
 
