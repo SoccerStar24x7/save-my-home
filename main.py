@@ -1,31 +1,60 @@
-# imports necessary libraries
-import cv2
-import sys
+import torch
+import torch.nn as nn
+from torch.optim import Adam
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, Dataset
+from torchinfo import summary
+from torch.utils.tensorboard import SummaryWriter
 
-camera = 0
-if len(sys.argv) > 1:
-    camera = sys.argv[1]
+import torchvision
+from torchvision import datasets
+from torchvision.transforms import v2 as transforms
+from torchvision.ops import Conv2dNormActivation
 
-# makes the camera able to be used by OpenCV
-source = cv2.VideoCapture(camera) 
+from dataclasses import dataclass
+from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import train_test_split
+import seaborn as sn
 
-y_start = 100
-y_end = 300
-x_start = 50
-x_end = 250
+import matplotlib.pyplot as plt
+import time
+import numpy as np
+import random
+import warnings
+import os
+from tqdm import tqdm
 
-# makes a window to display the source feed
-win_name = 'Camera Preview'
-cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+import pandas as pd
 
-while cv2.waitKey(1) != 27: # keeps the source open until ESC is pressed
-    has_frame, frame = source.read()
-    if not has_frame:
-        break
 
-    cropped_stream = frame[y_start:y_end, x_start:x_end]
-    cv2.imshow(win_name, frame)
+#Set seed for reproducibilty
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
-source.release()
-cv2.destroyWindow(win_name)
+    if torch.cuda.is_available():
+       torch.cuda.manual_seed(seed)
+       torch.cuda.manual_seed_all(seed)
+       torch.backends.cudnn.deterministic = True
+       torch.backends.cudnn.benchmark = True
 
+set_seed(42)
+
+
+@dataclass(frozen=True)
+class TrainingConfig:
+      ''' Configuration for Training '''
+      batch_size: int = 32
+      num_epochs: int = 100
+      learning_rate: float = 1e-4
+
+      log_interval: int = 1
+      test_interval: int = 1
+      data_root: int = "./"
+      num_workers: int = 5
+      device: str = "cuda"
+
+train_config = TrainingConfig()
+DEVICE = torch.device("cuda") if torch.cuda.is_available() else "cpu"
+print("Available Device: ", DEVICE)
