@@ -104,7 +104,7 @@ val_root = os.path.join(train_config.data_root, "testing_data", "validation")
 
 preprocess = transforms.Compose(
     [
-        transforms.Resize(img_import timesize, antialias=True),
+        transforms.Resize(img_size, antialias=True),
         transforms.ToTensor()
     ]
 )
