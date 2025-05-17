@@ -320,11 +320,16 @@ def main(model, train_loader, val_loader):
 # ------------------------------------------- Save the best model ---------------------------------
 
 # Load the best model weights
-model.load_state_dict(torch.load("best.pt"))
+try:
+    model.load_state_dict(torch.load("best.pt"))
+
+except:
+    print("uh o")
 model.eval()
 
 
-# ---------------------------------- The mode can now make inferences ------------------------
+
+# ---------------------------------- The model can now make inferences ------------------------
 def prediction(model, val_loader):
 
     model.eval()
@@ -361,7 +366,7 @@ def denormalize(image):
     image = image * std_ar + mean_ar
     return np.clip(image, 0,1)
 
-def visualise_predictions(sample_images,sample_gt_labels, pred_indices, pred_probs, num_images =5):
+def visualise_predictions(sample_images, sample_gt_labels, pred_indices, pred_probs, num_images =5):
 
     fig = plt.figure(figsize = (20,5))
 
@@ -380,3 +385,5 @@ def visualise_predictions(sample_images,sample_gt_labels, pred_indices, pred_pro
         ax.axis('off')
 
     plt.show()
+
+prediction()
