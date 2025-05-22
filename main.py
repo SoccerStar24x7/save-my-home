@@ -41,6 +41,9 @@ class_mapping = {
 img_size = (224,224) # sets the config for every image
 
 
+# determines the component that will be used to process the CNN
+DEVICE = torch.device("cuda") if torch.cuda.is_available() else "cpu"
+print("Available Device: ", DEVICE)
 
 # ---------------------- Defining useful functions and classes ---------------------------
 
@@ -63,7 +66,7 @@ set_seed(42)
 # determines the mean based on the given dataset, which in our case are the photos of the stove
 def get_mean_std(train_loader, img_size=(224, 224), num_workers=2):
 
-    batch_mean = torch.zeros(3)
+    batch_mean = torch.zeros(3) # makes a torch dataset of just 0's
     batch_mean_sqrd = torch.zeros(3)
 
     for batch_data, _ in train_loader:
@@ -90,17 +93,14 @@ class TrainingConfig:
       test_interval: int = 1
       data_root: int = "./"
       num_workers: int = 5
-      device: str = "cuda"
+      device: str = DEVICE
 
-# determines the component that will be used to process the CNN
 train_config = TrainingConfig()
-DEVICE = torch.device("cuda") if torch.cuda.is_available() else "cpu"
-print("Available Device: ", DEVICE)
 
 
 # obtains the directory of the training data and validation data
 train_root = os.path.join("testing_data", "training")
-val_root = os.path.join(train_config.data_root, "testing_data", "validation")
+val_root = os.path.join("testing_data", "validation")
 
 preprocess = transforms.Compose(
     [
@@ -241,7 +241,7 @@ def train(model, train_loader):
     correct_predictions = 0
     total_train_samples = 0
 
-    for images, labels in tqdm(train_loader, desc="Training"):
+    for images, labels in tqdm(train_loader):
         images, labels = images.to(DEVICE), labels.to(DEVICE)
         optimizer.zero_grad()
         outputs = model(images)
