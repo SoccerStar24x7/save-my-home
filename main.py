@@ -25,7 +25,7 @@ import os
 from tqdm import tqdm
 import pandas as pd
 
-from get_mean_and_std import get_mean_stds
+from get_mean_and_std import get_mean_std
 
 
 # ---------------- Configurating variables and assigning values ----------------------
@@ -99,8 +99,10 @@ train_config = TrainingConfig()
 
 
 # obtains the directory of the training data and validation data
-train_root = os.path.join("testing_data", "training")
-val_root = os.path.join("testing_data", "validation")
+data_root = "testing_data"
+train_root = os.path.join(data_root, "training")
+val_root = os.path.join(data_root, "validation")
+pred_root = os.path.join(data_root, "prediction")
 
 preprocess = transforms.Compose(
     [
@@ -143,6 +145,9 @@ train_data = datasets.ImageFolder(root = train_root, transform = train_transform
 # The validation dataset should have only common transforms like Resize, ToTensor and Normalize.
 val_data = datasets.ImageFolder(root=val_root, transform = common_transforms)
 
+# gets the prediction data
+pred_data = datasets.ImageFolder(root=pred_root)
+
 train_loader = DataLoader(
     train_data,
     shuffle = True,
@@ -151,6 +156,13 @@ train_loader = DataLoader(
 )
 val_loader = DataLoader(
     val_data,
+    shuffle = False,
+    batch_size = train_config.batch_size,
+    num_workers = train_config.num_workers
+)
+
+pred_loader = DataLoader(
+    pred_data,
     shuffle = False,
     batch_size = train_config.batch_size,
     num_workers = train_config.num_workers
@@ -224,7 +236,6 @@ class MyModel(nn.Module):
 model = MyModel()
 
 optimizer  = Adam(model.parameters(), lr = train_config.learning_rate)
-DEVICE = torch.device("cuda") if torch.cuda.is_available() else "cpu"
 
 logdir = "runs/80epochs-3.3M_param_dropout"
 
@@ -322,68 +333,9 @@ def main(model, train_loader, val_loader):
 # Load the best model weights
 try:
     model.load_state_dict(torch.load("best.pt"))
+    print("yahoo")
 
 except:
     print("uh o")
 model.eval()
 
-
-
-# ---------------------------------- The model can now make inferences ------------------------
-def prediction(model, val_loader):
-
-    model.eval()
-    model.to(DEVICE)
-
-    all_images, all_labels = [], []
-    all_pred_indices, all_pred_probs = [], []
-
-    for images, labels in val_loader:
-        images, labels = images.to(DEVICE), labels.to(DEVICE)
-
-        with torch.inference_mode():
-             outputs = model(images)
-
-        prob = F.softmax(outputs,dim=1)
-        pred_indices = prob.data.max(dim=1)[1]
-        pred_probs = prob.data.max(dim=1)[0]
-
-        all_images.append(images.cpu())
-        all_labels.append(labels.cpu())
-        all_pred_indices.append(pred_indices.cpu())
-        all_pred_probs.append(pred_probs.cpu())
-
-
-    return (torch.cat(all_images).numpy(),
-            torch.cat(all_labels).numpy(),
-            torch.cat(all_pred_indices).numpy(),
-            torch.cat(all_pred_probs).numpy())
-
-
-def denormalize(image):
-    mean_ar = np.array(mean)
-    std_ar = np.array(std)
-    image = image * std_ar + mean_ar
-    return np.clip(image, 0,1)
-
-def visualise_predictions(sample_images, sample_gt_labels, pred_indices, pred_probs, num_images =5):
-
-    fig = plt.figure(figsize = (20,5))
-
-    for i in range(num_images):
-        idx = random.randint(0, len(sample_images) -1)
-        image = sample_images[idx].transpose(1,2,0) #(C,H,W) --> (H,W,C)
-        label = sample_gt_labels[idx]
-        pred_idx = pred_indices[idx]
-        pred_prob = pred_probs[idx]
-
-        image = denormalize(image)
-
-        ax = fig.add_subplot(1, num_images, i+1)
-        ax.imshow(image)
-        ax.set_title(f"GT: {class_mapping[label]}\nPred: {class_mapping[pred_idx]} ({pred_prob:.2f})")
-        ax.axis('off')
-
-    plt.show()
-
-prediction()

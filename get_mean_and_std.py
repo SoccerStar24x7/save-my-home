@@ -1,7 +1,7 @@
 import torch
 
 # determines the mean based on the given dataset, which in our case are the photos of the stove
-def get_mean_stds(train_loader):
+def get_mean_std(train_loader):
 
     batch_mean = torch.zeros(3)
     batch_mean_sqrd = torch.zeros(3)
