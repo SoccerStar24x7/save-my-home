@@ -1,1 +1,0 @@
-cropped_image = img[1300:3024, 0:2000]
