@@ -26,7 +26,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 model.train() # "yo lock the fuck in"
 for images, labels in train_loader: # starts training
     optimizer.zero_grad() # resets from last batch
-    outputs = model(images) # "what do you think this is?"
+    outputs = model(images  ) # "what do you think this is?"
     loss = criterion(outputs, labels) # calculates how off the model was
 
     # goes and fixes itself
